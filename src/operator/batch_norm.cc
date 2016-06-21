@@ -20,8 +20,7 @@ Operator *CreateOp<cpu>(BatchNormParam param, int dtype) {
     op = new BatchNormOp<cpu, double>(param);
     break;
   case mshadow::kFloat16:
-    LOG(FATAL) << "float16 fully connected layer is currently"
-                  "only supported by CuDNN version.";
+    op = new BatchNormOp<cpu, mshadow::half::half_t>(param);
     break;
   default:
     LOG(FATAL) << "Unsupported type " << dtype;

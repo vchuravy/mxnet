@@ -169,8 +169,9 @@ class BatchNormOp : public Operator {
 
       const ScalarExp<DType> momentum = scalar<DType>(param_.momentum);
 
-      moving_mean = moving_mean * momentum + mean * (1 - momentum);
-      moving_var = moving_var * momentum + var * (1 - momentum);
+      // TODO(vchuravy) work around ambiguous ScalarExp - ScalarExp
+      moving_mean = moving_mean * momentum + mean * (tcast<DType>(scalar(1)) - momentum);
+      moving_var = moving_var * momentum + var * (tcast<DType>(scalar(1)) - momentum);
       // cal
       gvar = sumall_except_dim<1>((grad * broadcast<1>(slope, data.shape_)) *
                                   (data - broadcast<1>(mean, data.shape_)) *
