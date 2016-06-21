@@ -16,11 +16,11 @@ Operator *CreateOp<gpu>(BatchNormParam param, int dtype) {
 #if MXNET_USE_CUDNN == 1 && CUDNN_MAJOR >= 5
   MSHADOW_REAL_TYPE_SWITCH(dtype, DType, {
     op = new CuDNNBatchNormOp<DType>(param);
-  });
+  })
 #else
   MSHADOW_REAL_TYPE_SWITCH(dtype, DType, {
     op = new BatchNormOp<gpu, DType>(param);
-  });
+  })
 #endif
   return op;
 }

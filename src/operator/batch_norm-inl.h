@@ -71,7 +71,7 @@ class BatchNormOp : public Operator {
     }
 
     Stream<xpu> *s = ctx.get_stream<xpu>();
-    const DType scale = static_cast<DType>(static_cast<real_t>(in_data[batchnorm::kData].shape_[1])() /
+    const DType scale = static_cast<DType>(static_cast<real_t>(in_data[batchnorm::kData].shape_[1]) /
                          static_cast<real_t>(in_data[batchnorm::kData].shape_.Size()));
     Tensor<xpu, 4, DType> data;
     Tensor<xpu, 4, DType> out;
@@ -256,7 +256,7 @@ class BatchNormProp : public OperatorProperty {
     return true;
   }
   
-    bool InferType(std::vector<int> *in_type,
+  bool InferType(std::vector<int> *in_type,
                  std::vector<int> *out_type,
                  std::vector<int> *aux_type) const override {
     CHECK_GE(in_type->size(), 1);
@@ -324,7 +324,10 @@ class BatchNormProp : public OperatorProperty {
     return {"moving_mean", "moving_var"};
   }
 
-  Operator* CreateOperator(Context ctx) const override;
+  Operator* CreateOperator(Context ctx) const override {
+    LOG(FATAL) << "Not Implemented.";
+    return NULL;
+  }
 
   Operator* CreateOperatorEx(Context ctx, std::vector<TShape> *in_shape,
                              std::vector<int> *in_type) const override;

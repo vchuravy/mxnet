@@ -226,7 +226,7 @@ class CuDNNBatchNormOp : public Operator {
 #endif  // defined(__CUDACC__)
 
 template<typename xpu>
-Operator *CreateOp_CuDNNv4(BatchNormParam param);
+Operator *CreateOp_CuDNNv4(BatchNormParam param, int dtype);
 
 
 #if DMLC_USE_CXX11
@@ -258,6 +258,26 @@ class CuDNNBatchNormProp : public OperatorProperty {
     aux_shape->clear();
     aux_shape->push_back(Shape1(dshape[1]));
     aux_shape->push_back(Shape1(dshape[1]));
+    return true;
+  }
+  
+    bool InferType(std::vector<int> *in_type,
+                 std::vector<int> *out_type,
+                 std::vector<int> *aux_type) const override {
+    CHECK_GE(in_type->size(), 1);
+    int dtype = (*in_type)[0];
+    CHECK_NE(dtype, -1) << "First input must have specified type";
+    for (index_t i = 0; i < in_type->size(); ++i) {
+      if ((*in_type)[i] == -1) {
+        (*in_type)[i] = dtype;
+      } else {
+        CHECK_EQ((*in_type)[i], dtype) << "This layer requires uniform type. "
+                                       << "Expected " << dtype << " v.s. given "
+                                       << (*in_type)[i] << " at " << ListArguments()[i];
+      }
+    }
+    out_type->clear();
+    out_type->push_back(dtype);
     return true;
   }
 
@@ -304,7 +324,13 @@ class CuDNNBatchNormProp : public OperatorProperty {
     return {"moving_mean", "moving_inv_var"};
   }
 
-  Operator* CreateOperator(Context ctx) const override;
+  Operator* CreateOperator(Context ctx) const override {
+    LOG(FATAL) << "Not Implemented.";
+    return NULL;
+  }
+
+  Operator* CreateOperatorEx(Context ctx, std::vector<TShape> *in_shape,
+                             std::vector<int> *in_type) const override;
 
  private:
   BatchNormParam param_;

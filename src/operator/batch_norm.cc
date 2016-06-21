@@ -12,9 +12,20 @@ namespace op {
 template<>
 Operator *CreateOp<cpu>(BatchNormParam param, int dtype) {
   Operator *op = NULL;
-  MSHADOW_REAL_TYPE_SWITCH(dtype, DType, {
-    op = new BatchNormOp<cpu, DType>(param);
-  });
+  switch (dtype) {
+  case mshadow::kFloat32:
+    op = new BatchNormOp<cpu, float>(param);
+    break;
+  case mshadow::kFloat64:
+    op = new BatchNormOp<cpu, double>(param);
+    break;
+  case mshadow::kFloat16:
+    LOG(FATAL) << "float16 fully connected layer is currently"
+                  "only supported by CuDNN version.";
+    break;
+  default:
+    LOG(FATAL) << "Unsupported type " << dtype;
+  }
   return op;
 }
 
@@ -24,7 +35,7 @@ Operator *BatchNormProp::CreateOperatorEx(Context ctx, std::vector<TShape> *in_s
   std::vector<int> out_type, aux_type;
   CHECK(InferType(in_type, &out_type, &aux_type));
   CHECK(InferShape(in_shape, &out_shape, &aux_shape));
-  DO_BIND_DISPATCH(CreateOp, in_type->at(0));
+  DO_BIND_DISPATCH(CreateOp, param_, in_type->at(0));
 }
 
 DMLC_REGISTER_PARAMETER(BatchNormParam);
