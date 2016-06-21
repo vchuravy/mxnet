@@ -71,8 +71,9 @@ class BatchNormOp : public Operator {
     }
 
     Stream<xpu> *s = ctx.get_stream<xpu>();
-    const DType scale = static_cast<DType>(static_cast<real_t>(in_data[batchnorm::kData].shape_[1]) /
-                         static_cast<real_t>(in_data[batchnorm::kData].shape_.Size()));
+    const ScalarExp<DType> scale = scalar<DType>(
+        in_data[batchnorm::kData].shape_[1] / in_data[batchnorm::kData].shape_.Size());
+    const ScalarExp<DType> eps = scalar<DType>(param_.eps);
     Tensor<xpu, 4, DType> data;
     Tensor<xpu, 4, DType> out;
     if (in_data[batchnorm::kData].ndim() == 2) {
@@ -101,20 +102,20 @@ class BatchNormOp : public Operator {
 	  // Issue: Should the parameters be converted to DType before computation?
       if (param_.fix_gamma) {
         Assign(out, req[batchnorm::kOut], (data - broadcast<1>(mean, data.shape_)) /
-               F<mshadow_op::square_root>(broadcast<1>(var + param_.eps, data.shape_)) +
+               F<mshadow_op::square_root>(broadcast<1>(var + eps, data.shape_)) +
                broadcast<1>(bias, out.shape_));
       } else {
         Assign(out, req[batchnorm::kOut], broadcast<1>(slope, out.shape_) *
                (data - broadcast<1>(mean, data.shape_)) /
-               F<mshadow_op::square_root>(broadcast<1>(var + param_.eps, data.shape_)) +
+               F<mshadow_op::square_root>(broadcast<1>(var + eps, data.shape_)) +
                broadcast<1>(bias, out.shape_));
       }
     } else {
       Assign(out, req[batchnorm::kOut], broadcast<1>(slope /
-                                          F<mshadow_op::square_root>(moving_var + param_.eps),
+                                          F<mshadow_op::square_root>(moving_var + eps),
                                           data.shape_) * data +
              broadcast<1>(bias - (slope * moving_mean) /
-                          F<mshadow_op::square_root>(moving_var + param_.eps), data.shape_));
+                          F<mshadow_op::square_root>(moving_var + eps), data.shape_));
     }
   }
 
@@ -133,8 +134,9 @@ class BatchNormOp : public Operator {
     CHECK_EQ(in_grad.size(), 3);
     Stream<xpu> *s = ctx.get_stream<xpu>();
     Tensor<xpu, 4, DType> data, grad, grad_in;
-    const DType scale = static_cast<DType>(static_cast<real_t>(out_grad[batchnorm::kOut].shape_[1]) /
-                         static_cast<real_t>(out_grad[batchnorm::kOut].shape_.Size()));
+    const ScalarExp<DType> scale = scalar<DType>(
+        out_grad[batchnorm::kOut].shape_[1] / out_grad[batchnorm::kOut].shape_.Size());
+    const ScalarExp<DType> eps = scalar<DType>(param_.eps);
     if (in_data[batchnorm::kData].ndim() == 2) {
       Shape<4> dshape = Shape4(out_grad[batchnorm::kOut].shape_[0],
                                out_grad[batchnorm::kOut].shape_[1], 1, 1);
@@ -165,18 +167,19 @@ class BatchNormOp : public Operator {
       Tensor<xpu, 1, DType> gvar = workspace[1];
       Tensor<xpu, 1, DType> tmp = workspace[2];
 
-      moving_mean = moving_mean * param_.momentum + mean * (1 - param_.momentum);
-      moving_var = moving_var * param_.momentum + var * (1 - param_.momentum);
+      const ScalarExp<DType> momentum = scalar<DType>(param_.momentum);
+
+      moving_mean = moving_mean * momentum + mean * (1 - momentum);
+      moving_var = moving_var * momentum + var * (1 - momentum);
       // cal
-	  // Issue: Should these magic numbers be converted to DType before computation?
       gvar = sumall_except_dim<1>((grad * broadcast<1>(slope, data.shape_)) *
                                   (data - broadcast<1>(mean, data.shape_)) *
-                                  -0.5f *
-                                  F<mshadow_op::power>(broadcast<1>(var + param_.eps, data.shape_),
-                                                       -1.5f));
+                                  scalar<DType>(-0.5f) *
+                                  F<mshadow_op::power>(broadcast<1>(var + eps, data.shape_),
+                                                       scalar<DType>(-1.5f)));
       gmean = sumall_except_dim<1>(grad * broadcast<1>(slope, data.shape_));
-      gmean *= -1.0f / F<mshadow_op::square_root>(var + param_.eps);
-      tmp = scale * sumall_except_dim<1>(-2.0f * (data - broadcast<1>(mean, data.shape_)));
+      gmean *= scalar<DType>(-1.0f) / F<mshadow_op::square_root>(var + eps);
+      tmp = scale * sumall_except_dim<1>(scalar<DType>(-2.0f) * (data - broadcast<1>(mean, data.shape_)));
       tmp *= gvar;
       gmean += tmp;
       // assign
@@ -184,17 +187,17 @@ class BatchNormOp : public Operator {
         Assign(gslope, req[batchnorm::kGamma],
                sumall_except_dim<1>(
                    grad * (data - broadcast<1>(mean, data.shape_)) /
-                   F<mshadow_op::square_root>(broadcast<1>(var + param_.eps, data.shape_))));
+                   F<mshadow_op::square_root>(broadcast<1>(var + eps, data.shape_))));
         Assign(grad_in, req[batchnorm::kData],
                (grad * broadcast<1>(slope, data.shape_)) *
-               broadcast<1>(1.0f / F<mshadow_op::square_root>(var + param_.eps), data.shape_) +
-               broadcast<1>(gvar, data.shape_) * scale * 2.0f * (data - broadcast<1>(mean,
+               broadcast<1>(scalar<DType>(1.0f) / F<mshadow_op::square_root>(var + eps), data.shape_) +
+               broadcast<1>(gvar, data.shape_) * scale * scalar<DType>(2.0f) * (data - broadcast<1>(mean,
                                                                                      data.shape_)) +
                broadcast<1>(gmean, data.shape_) * scale);
       } else {
         Assign(grad_in, req[batchnorm::kData], grad *
-               broadcast<1>(1.0f / F<mshadow_op::square_root>(var + param_.eps), data.shape_) +
-               broadcast<1>(gvar, data.shape_) * scale * 2.0f * (data - broadcast<1>(mean,
+               broadcast<1>(scalar<DType>(1.0f) / F<mshadow_op::square_root>(var + eps), data.shape_) +
+               broadcast<1>(gvar, data.shape_) * scale * scalar<DType>(2.0f) * (data - broadcast<1>(mean,
                                                                                      data.shape_)) +
                broadcast<1>(gmean, data.shape_) * scale);
       }
@@ -205,14 +208,14 @@ class BatchNormOp : public Operator {
         Assign(gslope, req[batchnorm::kGamma],
                sumall_except_dim<1>(
                    grad * (data - broadcast<1>(moving_mean, data.shape_)) /
-                   F<mshadow_op::square_root>(broadcast<1>(moving_var + param_.eps, data.shape_))));
+                   F<mshadow_op::square_root>(broadcast<1>(moving_var + eps, data.shape_))));
         Assign(grad_in, req[batchnorm::kData], (grad * broadcast<1>(slope, data.shape_)) *
                broadcast<1>(
-                   1.0f / F<mshadow_op::square_root>(moving_var + param_.eps), data.shape_));
+                   scalar<DType>(1.0f) / F<mshadow_op::square_root>(moving_var + eps), data.shape_));
       } else {
         Assign(grad_in, req[batchnorm::kData], grad *
                broadcast<1>(
-                   1.0f / F<mshadow_op::square_root>(moving_var + param_.eps), data.shape_));
+                   scalar<DType>(1.0f) / F<mshadow_op::square_root>(moving_var + eps), data.shape_));
       }
     }
   }
